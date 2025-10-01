@@ -1,0 +1,87 @@
+# --- Node / JS general ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+
+# No ignores de lockfiles (recomendado committearlos)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# --- TypeScript ---
+*.tsbuildinfo
+
+# --- Builds & bundles ---
+dist/
+build/
+out/
+lib/
+.vite/
+.next/
+.nuxt/
+.swc/
+.turbo/
+.parcel-cache/
+.eslintcache
+.stylelintcache
+
+# --- Tests & coverage ---
+coverage/
+reports/
+.vitest/
+.jest/
+playwright-report/
+test-results/
+cypress/videos/
+cypress/screenshots/
+cypress/downloads/
+
+# --- Variables de entorno (mantener ejemplos) ---
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# --- Logs & PIDs ---
+logs/
+*.log
+pids/
+*.pid
+*.pid.lock
+
+# --- Archivos temporales / caches ---
+tmp/
+temp/
+.cache/
+*.seed
+
+# --- Subidas locales (p.ej. provider-service) ---
+uploads/
+public/uploads/
+# Si querés mantener la carpeta vacía:
+# !uploads/.gitkeep
+# !public/uploads/.gitkeep
+
+# --- Bases locales (por si usás SQLite en dev) ---
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.db
+
+# --- IDE / OS ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# --- Hosting / Deploy ---
+.vercel/
+.netlify/
+firebase-debug.log
+
+# --- Docker (datos locales opcionales) ---
+docker-data/
