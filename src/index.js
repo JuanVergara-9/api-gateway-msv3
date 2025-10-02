@@ -13,10 +13,23 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 
 // ---------- Seguridad / observabilidad ----------
-app.use(cors({ origin: (_o, cb) => cb(null, true), credentials: true }));
+app.set('trust proxy', 1);
+
+// CORS: libre en dev, whitelist en producción
+const frontendOrigins = (process.env.FRONTEND_ORIGINS || '')
+  .split(',').map(s => s.trim()).filter(Boolean);
+
+app.use(cors({
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true); // curl/postman
+    if (process.env.NODE_ENV !== 'production') return cb(null, true);
+    return cb(null, frontendOrigins.length === 0 || frontendOrigins.includes(origin));
+  },
+  credentials: true
+}));
+
 app.use(helmet());
 app.use(compression());
-app.set('trust proxy', 1);
 
 app.use((req, res, next) => {
   req.id = req.headers['x-request-id'] || uuidv4();
@@ -38,28 +51,6 @@ const restoreFullPath = () => (req, _res, next) => {
   next();
 };
 
-function buildProxy(target, label) {
-  return createProxyMiddleware({
-    target,
-    changeOrigin: true,
-    xfwd: true,
-    proxyTimeout: 30_000,
-    timeout: 30_000,
-    onProxyReq: (proxyReq, req) => {
-      proxyReq.setHeader('x-request-id', req.id);
-    },
-    onProxyRes: (proxyRes, req) => {
-      console.log(`[${req.id}] ${label} ${req.method} ${req.originalUrl} -> ${proxyRes.statusCode}`);
-    },
-    onError: (err, req, res) => {
-      console.error(`[${req.id}] ${label} proxy error:`, err.code || err.message);
-      if (!res.headersSent) {
-        res.status(502).json({ error: { code: 'GATEWAY.BAD_GATEWAY', message: `${label} no disponible`, requestId: req.id } });
-      }
-    }
-  });
-}
-
 function safeProxy(path, envVarName, label, extraMw = []) {
   const target = process.env[envVarName];
   if (!target) {
@@ -72,10 +63,7 @@ function safeProxy(path, envVarName, label, extraMw = []) {
   console.log(`[MOUNT] ${label}: ${path} -> ${target}`);
   app.use(
     path,
-    (req, _res, next) => {
-      console.log(`[GW][HIT] ${label} -> ${req.method} ${req.originalUrl}`);
-      next();
-    },
+    (req, _res, next) => { console.log(`[GW][HIT] ${label} -> ${req.method} ${req.originalUrl}`); next(); },
     ...extraMw,
     createProxyMiddleware({
       target,
@@ -83,7 +71,7 @@ function safeProxy(path, envVarName, label, extraMw = []) {
       xfwd: true,
       proxyTimeout: 30_000,
       timeout: 30_000,
-      pathRewrite: (_p, req) => req.originalUrl,
+      pathRewrite: (_p, req) => req.originalUrl, // mantiene /api/v1/... completo
       onProxyReq: (proxyReq, req) => proxyReq.setHeader('x-request-id', req.id),
       onProxyRes: (proxyRes, req) => console.log(`[${req.id}] ${label} ${req.method} ${req.originalUrl} -> ${proxyRes.statusCode}`),
       onError: (err, req, res) => {
@@ -99,24 +87,42 @@ function safeProxy(path, envVarName, label, extraMw = []) {
 // ---------- Health ----------
 app.get('/healthz', (_req, res) => res.json({ ok: true, service: 'api-gateway' }));
 
-// ---------- Montaje servicios (ORDEN CORRECTO) ----------
+// /ready del gateway: chequea microservicios
+app.get('/ready', async (_req, res) => {
+  const urls = [
+    process.env.AUTH_SERVICE_URL,
+    process.env.USER_SERVICE_URL,
+    process.env.PROVIDER_SERVICE_URL,
+    process.env.REVIEWS_SERVICE_URL,
+    process.env.INSIGHTS_SERVICE_URL,
+    process.env.GEOLOCATION_SERVICE_URL || process.env.GEO_SERVICE_URL, // soporta ambos nombres
+    process.env.CATEGORY_SERVICE_URL
+  ].filter(Boolean);
 
-// PRIMERO: Rutas generales (safeProxy)
+  const fetch = (await import('node-fetch')).default;
+  const checks = await Promise.allSettled(
+    urls.map(u => fetch(`${u}/readyz`, { timeout: 8000 }).then(r => r.ok))
+  );
+  const ok = checks.every(c => c.status === 'fulfilled' && c.value === true);
+  res.status(ok ? 200 : 503).json({ ok, services: checks.map(c => c.status) });
+});
+
+// ---------- Montaje servicios ----------
 safeProxy('/api/v1/auth', 'AUTH_SERVICE_URL', 'AUTH', [authLimiter]);
 safeProxy('/api/v1/users', 'USER_SERVICE_URL', 'USERS');
 safeProxy('/api/v1/reviews', 'REVIEWS_SERVICE_URL', 'REVIEWS');
 safeProxy('/api/v1/contact-intents', 'REVIEWS_SERVICE_URL', 'REVIEWS-CI');
-safeProxy('/api/v1/geo', 'GEO_SERVICE_URL', 'GEO');
 safeProxy('/api/v1/events', 'INSIGHTS_SERVICE_URL', 'INSIGHTS');
 safeProxy('/api/v1/metrics', 'INSIGHTS_SERVICE_URL', 'INSIGHTS-METRICS');
 
-// DESPUÉS: Rutas específicas (app.use)
+// Geolocalización (admite 2 nombres de env)
+process.env.GEOLOCATION_SERVICE_URL = process.env.GEOLOCATION_SERVICE_URL || process.env.GEO_SERVICE_URL;
+safeProxy('/api/v1/geo', 'GEOLOCATION_SERVICE_URL', 'GEO');
+
+// Rutas específicas
 app.use(
   '/api/v1/user-profile',
-  (req, _res, next) => {
-    console.log(`[GW][HIT] user-profile -> ${req.method} ${req.originalUrl}`);
-    next();
-  },
+  (req, _res, next) => { console.log(`[GW][HIT] user-profile -> ${req.method} ${req.originalUrl}`); next(); },
   restoreFullPath(),
   createProxyMiddleware({
     target: process.env.USER_SERVICE_URL,
@@ -138,18 +144,14 @@ app.use(
   '/api/v1/providers',
   (req, res, next) => {
     console.log(`[GW][HIT] providers -> ${req.method} url=${req.url} originalUrl=${req.originalUrl}`);
-    if (req.method === 'GET') {
-      res.set('Cache-Control', 'public, max-age=30');
-    }
+    if (req.method === 'GET') res.set('Cache-Control', 'public, max-age=30');
     next();
   },
   createProxyMiddleware({
     target: process.env.PROVIDER_SERVICE_URL,
     router: (req) => {
       const isReviewsPath = /^\/(?:api\/v1\/)?providers\/\d+\/(?:reviews|review-summary)(?:[\/?]|$)/.test(req.originalUrl);
-      if (isReviewsPath && process.env.REVIEWS_SERVICE_URL) {
-        return process.env.REVIEWS_SERVICE_URL;
-      }
+      if (isReviewsPath && process.env.REVIEWS_SERVICE_URL) return process.env.REVIEWS_SERVICE_URL;
       return process.env.PROVIDER_SERVICE_URL;
     },
     changeOrigin: true,
@@ -172,13 +174,11 @@ app.use(
   '/api/v1/categories',
   (req, res, next) => {
     console.log(`[GW][HIT] categories -> ${req.method} url=${req.url} originalUrl=${req.originalUrl}`);
-    if (req.method === 'GET') {
-      res.set('Cache-Control', 'public, max-age=60');
-    }
+    if (req.method === 'GET') res.set('Cache-Control', 'public, max-age=60');
     next();
   },
   createProxyMiddleware({
-    target: process.env.PROVIDER_SERVICE_URL,
+    target: process.env.PROVIDER_SERVICE_URL, // cambiar a CATEGORY_SERVICE_URL cuando lo separes
     changeOrigin: true,
     xfwd: true,
     proxyTimeout: 30_000,
@@ -200,4 +200,5 @@ app.use((_req, res) => {
   res.status(404).json({ error: { code: 'GATEWAY.NOT_FOUND', message: 'Ruta no encontrada' } });
 });
 
-app.listen(PORT, () => console.log(`api-gateway on :${PORT}`));
+// Bind 0.0.0.0 para Railway
+app.listen(PORT, '0.0.0.0', () => console.log(`api-gateway on :${PORT}`));
