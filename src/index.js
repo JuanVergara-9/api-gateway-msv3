@@ -5,7 +5,7 @@ const compression = require('compression');
 const helmet = require('helmet');
 const cors = require('cors');
 const morgan = require('morgan');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const rateLimit = require('express-rate-limit');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 
@@ -32,7 +32,7 @@ app.use(helmet());
 app.use(compression());
 
 app.use((req, res, next) => {
-  req.id = req.headers['x-request-id'] || uuidv4();
+  req.id = req.headers['x-request-id'] || randomUUID();
   res.set('x-request-id', req.id);
   next();
 });
@@ -73,7 +73,9 @@ function safeProxy(path, envVarName, label, extraMw = []) {
       timeout: 30_000,
       pathRewrite: (_p, req) => req.originalUrl, // mantiene /api/v1/... completo
       onProxyReq: (proxyReq, req) => proxyReq.setHeader('x-request-id', req.id),
-      onProxyRes: (proxyRes, req) => console.log(`[${req.id}] ${label} ${req.method} ${req.originalUrl} -> ${proxyRes.statusCode}`),
+      onProxyRes: (proxyRes, req) => console.log(
+        `[${req.id}] ${label} ${req.method} ${req.originalUrl} -> ${proxyRes.statusCode}`
+      ),
       onError: (err, req, res) => {
         console.error(`[${req.id}] ${label} proxy error:`, err.code || err.message);
         if (!res.headersSent) {
@@ -87,7 +89,7 @@ function safeProxy(path, envVarName, label, extraMw = []) {
 // ---------- Health ----------
 app.get('/healthz', (_req, res) => res.json({ ok: true, service: 'api-gateway' }));
 
-// /ready del gateway: chequea microservicios
+// /ready del gateway: chequea microservicios con fetch nativo + timeout
 app.get('/ready', async (_req, res) => {
   const urls = [
     process.env.AUTH_SERVICE_URL,
@@ -95,17 +97,22 @@ app.get('/ready', async (_req, res) => {
     process.env.PROVIDER_SERVICE_URL,
     process.env.REVIEWS_SERVICE_URL,
     process.env.INSIGHTS_SERVICE_URL,
-    process.env.GEOLOCATION_SERVICE_URL || process.env.GEO_SERVICE_URL, // soporta ambos nombres
+    process.env.GEOLOCATION_SERVICE_URL || process.env.GEO_SERVICE_URL,
     process.env.CATEGORY_SERVICE_URL
   ].filter(Boolean);
 
-  const fetch = (await import('node-fetch')).default;
   const checks = await Promise.allSettled(
-    urls.map(u => fetch(`${u}/readyz`, { timeout: 8000 }).then(r => r.ok))
+    urls.map(u => fetchWithTimeout(`${u}/readyz`, 8000).then(r => r.ok))
   );
   const ok = checks.every(c => c.status === 'fulfilled' && c.value === true);
   res.status(ok ? 200 : 503).json({ ok, services: checks.map(c => c.status) });
 });
+
+function fetchWithTimeout(url, ms) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(t));
+}
 
 // ---------- Montaje servicios ----------
 safeProxy('/api/v1/auth', 'AUTH_SERVICE_URL', 'AUTH', [authLimiter]);
@@ -132,10 +139,14 @@ app.use(
     timeout: 30_000,
     pathRewrite: { '^/api/v1/user-profile': '/api/v1/users' },
     onProxyReq: (proxyReq, req) => proxyReq.setHeader('x-request-id', req.id || 'n/a'),
-    onProxyRes: (proxyRes, req) => console.log(`[${req.id}] USER-PROFILE ${req.method} ${req.originalUrl} -> ${proxyRes.statusCode}`),
+    onProxyRes: (proxyRes, req) => console.log(
+      `[${req.id}] USER-PROFILE ${req.method} ${req.originalUrl} -> ${proxyRes.statusCode}`
+    ),
     onError: (err, req, res) => {
       console.error(`[${req.id}] USER-PROFILE proxy error:`, err.code || err.message);
-      if (!res.headersSent) res.status(502).json({ error:{ code:'GATEWAY.BAD_GATEWAY', message:'User service no disponible', requestId:req.id }});
+      if (!res.headersSent) res.status(502).json({
+        error:{ code:'GATEWAY.BAD_GATEWAY', message:'User service no disponible', requestId:req.id }
+      });
     }
   })
 );
@@ -160,7 +171,9 @@ app.use(
     timeout: 30_000,
     pathRewrite: (_path, req) => req.originalUrl,
     onProxyReq: (proxyReq, req) => proxyReq.setHeader('x-request-id', req.id || 'n/a'),
-    onProxyRes: (proxyRes, req) => console.log(`[${req.id}] PROVIDERS ${req.method} ${req.originalUrl} -> ${proxyRes.statusCode}`),
+    onProxyRes: (proxyRes, req) => console.log(
+      `[${req.id}] PROVIDERS ${req.method} ${req.originalUrl} -> ${proxyRes.statusCode}`
+    ),
     onError: (err, req, res) => {
       console.error(`[${req.id}] PROVIDERS proxy error:`, err.code || err.message);
       if (!res.headersSent) {
@@ -185,7 +198,9 @@ app.use(
     timeout: 30_000,
     pathRewrite: (_path, req) => req.originalUrl,
     onProxyReq: (proxyReq, req) => proxyReq.setHeader('x-request-id', req.id || 'n/a'),
-    onProxyRes: (proxyRes, req) => console.log(`[${req.id}] CATEGORIES ${req.method} ${req.originalUrl} -> ${proxyRes.statusCode}`),
+    onProxyRes: (proxyRes, req) => console.log(
+      `[${req.id}] CATEGORIES ${req.method} ${req.originalUrl} -> ${proxyRes.statusCode}`
+    ),
     onError: (err, req, res) => {
       console.error(`[${req.id}] CATEGORIES proxy error:`, err.code || err.message);
       if (!res.headersSent) {
