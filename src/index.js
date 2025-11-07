@@ -1,4 +1,9 @@
-require('dotenv').config();
+// Cargar .env.local primero si existe (desarrollo local), luego .env
+const fs = require('fs');
+if (fs.existsSync('.env.local')) {
+  require('dotenv').config({ path: '.env.local' });
+}
+require('dotenv').config(); // .env tiene menor prioridad
 
 const express = require('express');
 const compression = require('compression');
