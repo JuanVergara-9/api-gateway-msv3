@@ -156,6 +156,31 @@ app.use(
   })
 );
 
+// Feedback route (proxies to user-service)
+app.use(
+  '/api/v1/feedback',
+  (req, _res, next) => { console.log(`[GW][HIT] feedback -> ${req.method} ${req.originalUrl}`); next(); },
+  restoreFullPath(),
+  createProxyMiddleware({
+    target: process.env.USER_SERVICE_URL,
+    changeOrigin: true,
+    xfwd: true,
+    proxyTimeout: 30_000,
+    timeout: 30_000,
+    pathRewrite: { '^/api/v1/feedback': '/api/v1/feedback' },
+    onProxyReq: (proxyReq, req) => proxyReq.setHeader('x-request-id', req.id || 'n/a'),
+    onProxyRes: (proxyRes, req) => console.log(
+      `[${req.id}] FEEDBACK ${req.method} ${req.originalUrl} -> ${proxyRes.statusCode}`
+    ),
+    onError: (err, req, res) => {
+      console.error(`[${req.id}] FEEDBACK proxy error:`, err.code || err.message);
+      if (!res.headersSent) res.status(502).json({
+        error:{ code:'GATEWAY.BAD_GATEWAY', message:'User service no disponible', requestId:req.id }
+      });
+    }
+  })
+);
+
 app.use(
   '/api/v1/providers',
   (req, res, next) => {
