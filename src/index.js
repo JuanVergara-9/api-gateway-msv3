@@ -126,6 +126,7 @@ safeProxy('/api/v1/reviews', 'REVIEWS_SERVICE_URL', 'REVIEWS');
 safeProxy('/api/v1/contact-intents', 'REVIEWS_SERVICE_URL', 'REVIEWS-CI');
 safeProxy('/api/v1/events', 'INSIGHTS_SERVICE_URL', 'INSIGHTS');
 safeProxy('/api/v1/metrics', 'INSIGHTS_SERVICE_URL', 'INSIGHTS-METRICS');
+safeProxy('/api/v1/chat', 'PROVIDER_SERVICE_URL', 'CHAT');
 
 // Geolocalización (admite 2 nombres de env)
 process.env.GEOLOCATION_SERVICE_URL = process.env.GEOLOCATION_SERVICE_URL || process.env.GEO_SERVICE_URL;
@@ -150,7 +151,7 @@ app.use(
     onError: (err, req, res) => {
       console.error(`[${req.id}] USER-PROFILE proxy error:`, err.code || err.message);
       if (!res.headersSent) res.status(502).json({
-        error:{ code:'GATEWAY.BAD_GATEWAY', message:'User service no disponible', requestId:req.id }
+        error: { code: 'GATEWAY.BAD_GATEWAY', message: 'User service no disponible', requestId: req.id }
       });
     }
   })
@@ -175,7 +176,7 @@ app.use(
     onError: (err, req, res) => {
       console.error(`[${req.id}] FEEDBACK proxy error:`, err.code || err.message);
       if (!res.headersSent) res.status(502).json({
-        error:{ code:'GATEWAY.BAD_GATEWAY', message:'User service no disponible', requestId:req.id }
+        error: { code: 'GATEWAY.BAD_GATEWAY', message: 'User service no disponible', requestId: req.id }
       });
     }
   })
