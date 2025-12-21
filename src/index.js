@@ -127,6 +127,7 @@ safeProxy('/api/v1/contact-intents', 'REVIEWS_SERVICE_URL', 'REVIEWS-CI');
 safeProxy('/api/v1/events', 'INSIGHTS_SERVICE_URL', 'INSIGHTS');
 safeProxy('/api/v1/metrics', 'INSIGHTS_SERVICE_URL', 'INSIGHTS-METRICS');
 safeProxy('/api/v1/chat', 'PROVIDER_SERVICE_URL', 'CHAT');
+safeProxy('/api/v1/orders', 'PROVIDER_SERVICE_URL', 'ORDERS');
 
 // Geolocalización (admite 2 nombres de env)
 process.env.GEOLOCATION_SERVICE_URL = process.env.GEOLOCATION_SERVICE_URL || process.env.GEO_SERVICE_URL;
