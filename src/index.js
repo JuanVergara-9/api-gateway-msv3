@@ -129,6 +129,18 @@ safeProxy('/api/v1/metrics', 'INSIGHTS_SERVICE_URL', 'INSIGHTS-METRICS');
 safeProxy('/api/v1/chat', 'PROVIDER_SERVICE_URL', 'CHAT');
 safeProxy('/api/v1/orders', 'PROVIDER_SERVICE_URL', 'ORDERS');
 
+// Proxy para WebSockets (Socket.io)
+const socketTarget = process.env.PROVIDER_SERVICE_URL;
+if (socketTarget) {
+  console.log(`[MOUNT] SOCKETS: /socket.io -> ${socketTarget}`);
+  app.use('/socket.io', createProxyMiddleware({
+    target: socketTarget,
+    changeOrigin: true,
+    ws: true,
+    logLevel: 'debug'
+  }));
+}
+
 // Geolocalización (admite 2 nombres de env)
 process.env.GEOLOCATION_SERVICE_URL = process.env.GEOLOCATION_SERVICE_URL || process.env.GEO_SERVICE_URL;
 safeProxy('/api/v1/geo', 'GEOLOCATION_SERVICE_URL', 'GEO');
