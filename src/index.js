@@ -103,7 +103,8 @@ app.get('/ready', async (_req, res) => {
     process.env.REVIEWS_SERVICE_URL,
     process.env.INSIGHTS_SERVICE_URL,
     process.env.GEOLOCATION_SERVICE_URL || process.env.GEO_SERVICE_URL,
-    process.env.CATEGORY_SERVICE_URL
+    process.env.CATEGORY_SERVICE_URL,
+    process.env.NOTIFICATION_SERVICE_URL
   ].filter(Boolean);
 
   const checks = await Promise.allSettled(
@@ -128,6 +129,7 @@ safeProxy('/api/v1/events', 'INSIGHTS_SERVICE_URL', 'INSIGHTS');
 safeProxy('/api/v1/metrics', 'INSIGHTS_SERVICE_URL', 'INSIGHTS-METRICS');
 safeProxy('/api/v1/chat', 'PROVIDER_SERVICE_URL', 'CHAT');
 safeProxy('/api/v1/orders', 'PROVIDER_SERVICE_URL', 'ORDERS');
+safeProxy('/api/v1/notifications', 'NOTIFICATION_SERVICE_URL', 'NOTIFICATIONS');
 
 // Proxy para WebSockets (Socket.io)
 const socketTarget = process.env.PROVIDER_SERVICE_URL;
