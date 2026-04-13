@@ -44,7 +44,13 @@ app.use((req, res, next) => {
 
 app.use(morgan(':method :url :status - :response-time ms - reqId=:req[x-request-id]'));
 
-const standardLimiter = rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false });
+const standardLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.method === 'POST' && req.path === '/api/v1/notifications/webhook'
+});
 const authLimiter = rateLimit({ windowMs: 60_000, max: 20, standardHeaders: true, legacyHeaders: false });
 app.use(standardLimiter);
 
